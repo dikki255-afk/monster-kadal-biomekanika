@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stalking Predator with Dynamic Wrists</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #050505; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+
+    <canvas id="geckoCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("geckoCanvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+const jumlahSegmen = 18; 
+const panjangSegmen = 12; 
+let segmen = [];
+for (let i = 0; i < jumlahSegmen; i++) {
+    segmen.push({ x: canvas.width / 2, y: canvas.height / 2 });
+}
+
+let targetX = canvas.width / 2;
+let targetY = canvas.height / 2;
+let waktuGlobal = 0; 
+
+const panjangPaha = 45;
+const panjangBetis = 50;
+
+let dataKaki = [
+    { nama: "Depan Kiri", segmenBody: 2, group: 0, sign: -1, localX: 35, localY: -65, xTanah: 0, yTanah: 0, xAsal: 0, yAsal: 0, xTarget: 0, yTarget: 0, stepProgress: 1 },
+    { nama: "Depan Kanan", segmenBody: 2, group: 1, sign: 1, localX: 35, localY: 65, xTanah: 0, yTanah: 0, xAsal: 0, yAsal: 0, xTarget: 0, yTarget: 0, stepProgress: 1 },
+    { nama: "Belakang Kiri", segmenBody: 10, group: 1, sign: 1, localX: -20, localY: -70, xTanah: 0, yTanah: 0, xAsal: 0, yAsal: 0, xTarget: 0, yTarget: 0, stepProgress: 1 },
+    { nama: "Belakang Kanan", segmenBody: 10, group: 0, sign: -1, localX: -20, localY: 70, xTanah: 0, yTanah: 0, xAsal: 0, yAsal: 0, xTarget: 0, yTarget: 0, stepProgress: 1 }
+];
+
+let stepGroupAktif = 0; 
+
+dataKaki.forEach(kaki => {
+    kaki.xTanah = kaki.xAsal = kaki.xTarget = canvas.width / 2;
+    kaki.yTanah = kaki.yAsal = kaki.yTarget = canvas.height / 2;
+});
+
+window.addEventListener("mousemove", (e) => { targetX = e.clientX; targetY = e.clientY; });
+window.addEventListener("touchmove", (e) => {
+    if(e.touches.length > 0) { targetX = e.touches[0].clientX; targetY = e.touches[0].clientY; }
+});
+
+function hitungIK(hipX, hipY, footX, footY, L1, L2, sign) {
+    let dx = footX - hipX;
+    let dy = footY - hipY;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    dist = Math.min(dist, L1 + L2 - 0.01); 
+
+    let angleToFoot = Math.atan2(dy, dx);
+    let cosTheta = (L1*L1 + dist*dist - L2*L2) / (2 * L1 * dist);
+    cosTheta = Math.max(-1, Math.min(1, cosTheta));
+    let theta = Math.acos(cosTheta);
+    
+    let kneeAngle = angleToFoot + (sign * theta);
+    
+    return {
+        x: hipX + Math.cos(kneeAngle) * L1,
+        y: hipY + Math.sin(kneeAngle) * L1
+    };
+}
+
+function updateAnimasi() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let dxTar = targetX - segmen[0].x;
+    let dyTar = targetY - segmen[0].y;
+    let jarakTar = Math.sqrt(dxTar*dxTar + dyTar*dyTar);
+
+    if (jarakTar > 15) { 
+        let arahX = dxTar / jarakTar;
+        let arahY = dyTar / jarakTar;
+
+        waktuGlobal += 0.15; 
+        
+        let efekLunge = Math.max(0, Math.sin(waktuGlobal * 2)) * 1.5;
+        let amplitudo = 2.0; 
+        let ayunanSampingX = -arahY * Math.sin(waktuGlobal) * amplitudo;
+        let ayunanSampingY = arahX * Math.sin(waktuGlobal) * amplitudo;
+
+        let kecepatan = 2.5 + efekLunge; 
+        segmen[0].x += (arahX * kecepatan) + ayunanSampingX;
+        segmen[0].y += (arahY * kecepatan) + ayunanSampingY;
+    }
+
+    for (let i = 1; i < jumlahSegmen; i++) {
+        let dx = segmen[i-1].x - segmen[i].x;
+        let dy = segmen[i-1].y - segmen[i].y;
+        let jarak = Math.sqrt(dx*dx + dy*dy);
+        if (jarak > panjangSegmen) {
+            let rasio = panjangSegmen / jarak;
+            segmen[i].x = segmen[i-1].x - dx * rasio;
+            segmen[i].y = segmen[i-1].y - dy * rasio;
+        }
+    }
+
+    let isStepping = dataKaki.some(k => k.stepProgress < 1.0);
+
+    if (!isStepping && jarakTar > 15) { 
+        let butuhLangkah = false;
+        
+        dataKaki.forEach(k => {
+            if (k.group === stepGroupAktif) {
+                let pahaX = segmen[k.segmenBody].x;
+                let pahaY = segmen[k.segmenBody].y;
+                let dxBody = segmen[k.segmenBody-1].x - segmen[k.segmenBody].x;
+                let dyBody = segmen[k.segmenBody-1].y - segmen[k.segmenBody].y;
+                let sudutBody = Math.atan2(dyBody, dxBody);
+                
+                let idealX = pahaX + k.localX * Math.cos(sudutBody) - k.localY * Math.sin(sudutBody);
+                let idealY = pahaY + k.localX * Math.sin(sudutBody) + k.localY * Math.cos(sudutBody);
+                
+                let jarakKeIdeal = Math.sqrt((k.xTarget - idealX)**2 + (k.yTarget - idealY)**2);
+                
+                if (jarakKeIdeal > 55) butuhLangkah = true;
+            }
+        });
+
+        if (butuhLangkah) {
+            dataKaki.forEach(k => {
+                if (k.group === stepGroupAktif) {
+                    k.stepProgress = 0.0;
+                    k.xAsal = k.xTanah;
+                    k.yAsal = k.yTanah;
+                    
+                    let pahaX = segmen[k.segmenBody].x;
+                    let pahaY = segmen[k.segmenBody].y;
+                    let dxBody = segmen[k.segmenBody-1].x - segmen[k.segmenBody].x;
+                    let dyBody = segmen[k.segmenBody-1].y - segmen[k.segmenBody].y;
+                    let sudutBody = Math.atan2(dyBody, dxBody);
+                    
+                    let idealX = pahaX + k.localX * Math.cos(sudutBody) - k.localY * Math.sin(sudutBody);
+                    let idealY = pahaY + k.localX * Math.sin(sudutBody) + k.localY * Math.cos(sudutBody);
+                    
+                    k.xTarget = idealX + Math.cos(sudutBody) * 45;
+                    k.yTarget = idealY + Math.sin(sudutBody) * 45;
+                }
+            });
+            stepGroupAktif = 1 - stepGroupAktif; 
+        }
+    }
+
+    dataKaki.forEach(kaki => {
+        if (kaki.stepProgress < 1.0) {
+            kaki.stepProgress += 0.12; 
+            let t = Math.min(kaki.stepProgress, 1.0);
+            let easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            
+            kaki.xTanah = kaki.xAsal + (kaki.xTarget - kaki.xAsal) * easeT;
+            kaki.yTanah = kaki.yAsal + (kaki.yTarget - kaki.yAsal) * easeT;
+            
+            kaki.yTanah -= Math.sin(Math.PI * t) * 35; 
+        }
+
+        let pahaX = segmen[kaki.segmenBody].x;
+        let pahaY = segmen[kaki.segmenBody].y;
+
+        let lutut = hitungIK(pahaX, pahaY, kaki.xTanah, kaki.yTanah, panjangPaha, panjangBetis, kaki.sign);
+
+        ctx.strokeStyle = "#ff003c"; 
+        ctx.lineWidth = 6;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        
+        ctx.beginPath();
+        ctx.moveTo(pahaX, pahaY);
+        ctx.lineTo(lutut.x, lutut.y);
+        ctx.lineTo(kaki.xTanah, kaki.yTanah);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#111"; 
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(pahaX, pahaY);
+        ctx.lineTo(lutut.x, lutut.y);
+        ctx.lineTo(kaki.xTanah, kaki.yTanah);
+        ctx.stroke();
+
+        // 🛠️ PERBAIKAN: PERGELANGAN TANGAN DINAMIS (DYNAMIC WRISTS)
+        let isKiri = kaki.localY < 0; // Deteksi kaki kiri atau kanan
+        
+        // Ambil sudut hadap badannya sebagai referensi utama
+        let dxBodyKaki = segmen[kaki.segmenBody-1].x - segmen[kaki.segmenBody].x;
+        let dyBodyKaki = segmen[kaki.segmenBody-1].y - segmen[kaki.segmenBody].y;
+        let sudutBodyKaki = Math.atan2(dyBodyKaki, dxBodyKaki);
+        
+        // Splay: Cakar mengarah ke depan tubuh tapi agak membuka ke luar sedikit (0.4 radian)
+        let splayOffset = isKiri ? -0.4 : 0.4;
+        
+        // Flex: Efek pergelangan menekuk/menggulung ke dalam saat di udara!
+        let flexOffset = 0;
+        if (kaki.stepProgress < 1.0) {
+            let t = kaki.stepProgress;
+            // Saat diangkat (t=0.5), cakarnya menggulung ke arah dalam (0.8 radian)
+            flexOffset = Math.sin(Math.PI * t) * (isKiri ? 0.8 : -0.8);
+        }
+
+        // Gabungkan semuanya menjadi sudut telapak/cakar yang independen
+        let sudutTelapak = sudutBodyKaki + splayOffset + flexOffset;
+
+        ctx.strokeStyle = "#ff003c";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let j = -1; j <= 1; j++) {
+            let sudutJari = sudutTelapak + (j * 0.35); 
+            let panjangCakar = 16 + (j === 0 ? 5 : 0); 
+            let ujungJariX = kaki.xTanah + Math.cos(sudutJari) * panjangCakar;
+            let ujungJariY = kaki.yTanah + Math.sin(sudutJari) * panjangCakar;
+            ctx.moveTo(kaki.xTanah, kaki.yTanah);
+            ctx.lineTo(ujungJariX, ujungJariY);
+        }
+        ctx.stroke();
+    });
+
+    for (let i = 0; i < jumlahSegmen; i++) {
+        let ukuran = 3;
+        if (i === 0) ukuran = 15; 
+        else if (i === 1) ukuran = 12; 
+        else if (i < 9) ukuran = 17 - (i * 0.3);  
+        else ukuran = Math.max(15 - (i * 0.8), 2); 
+        
+        ctx.fillStyle = "#111";
+        ctx.strokeStyle = "#ff003c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(segmen[i].x, segmen[i].y, ukuran, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (i > 1 && i < jumlahSegmen - 2) {
+            let dxSpike = segmen[i-1].x - segmen[i].x;
+            let dySpike = segmen[i-1].y - segmen[i].y;
+            let sudutSpike = Math.atan2(dySpike, dxSpike);
+            
+            let ukuranDuri = ukuran * 1.6;
+            ctx.fillStyle = "#ff003c";
+            ctx.beginPath();
+            ctx.moveTo(segmen[i].x + Math.cos(sudutSpike + Math.PI/2) * (ukuran*0.6), segmen[i].y + Math.sin(sudutSpike + Math.PI/2) * (ukuran*0.6));
+            ctx.lineTo(segmen[i].x + Math.cos(sudutSpike - Math.PI/2) * (ukuran*0.6), segmen[i].y + Math.sin(sudutSpike - Math.PI/2) * (ukuran*0.6));
+            ctx.lineTo(segmen[i].x - Math.cos(sudutSpike) * ukuranDuri, segmen[i].y - Math.sin(sudutSpike) * ukuranDuri);
+            ctx.fill();
+        }
+    }
+
+    let dxKepala = targetX - segmen[0].x;
+    let dyKepala = targetY - segmen[0].y;
+    let sudutKepala = Math.atan2(dyKepala, dxKepala);
+    
+    ctx.fillStyle = "#ff0000";
+    ctx.beginPath();
+    ctx.arc(segmen[0].x + Math.cos(sudutKepala - 0.7) * 7, segmen[0].y + Math.sin(sudutKepala - 0.7) * 7, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(segmen[0].x + Math.cos(sudutKepala + 0.7) * 7, segmen[0].y + Math.sin(sudutKepala + 0.7) * 7, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1.5;
+    
+    let mataKiriX = segmen[0].x + Math.cos(sudutKepala - 0.7) * 7;
+    let mataKiriY = segmen[0].y + Math.sin(sudutKepala - 0.7) * 7;
+    ctx.beginPath();
+    ctx.moveTo(mataKiriX + Math.cos(sudutKepala + Math.PI/2) * 2.5, mataKiriY + Math.sin(sudutKepala + Math.PI/2) * 2.5);
+    ctx.lineTo(mataKiriX - Math.cos(sudutKepala + Math.PI/2) * 2.5, mataKiriY - Math.sin(sudutKepala + Math.PI/2) * 2.5);
+    ctx.stroke();
+
+    let mataKananX = segmen[0].x + Math.cos(sudutKepala + 0.7) * 7;
+    let mataKananY = segmen[0].y + Math.sin(sudutKepala + 0.7) * 7;
+    ctx.beginPath();
+    ctx.moveTo(mataKananX + Math.cos(sudutKepala + Math.PI/2) * 2.5, mataKananY + Math.sin(sudutKepala + Math.PI/2) * 2.5);
+    ctx.lineTo(mataKananX - Math.cos(sudutKepala + Math.PI/2) * 2.5, mataKananY - Math.sin(sudutKepala + Math.PI/2) * 2.5);
+    ctx.stroke();
+
+    requestAnimationFrame(updateAnimasi);
+}
+
+updateAnimasi();
+</script>
+
+</body>
+</html>
